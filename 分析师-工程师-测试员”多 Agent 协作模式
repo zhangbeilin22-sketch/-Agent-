@@ -1,0 +1,85 @@
+import os
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import Tool
+
+# 假设已经配置了环境变量 OPENAI_API_KEY
+# os.environ["OPENAI_API_KEY"] = "your-api-key"
+
+# 1. 定义工具 (Tools) - 模拟外部系统交互
+def scan_code_repository(file_path: str) -> str:
+    """模拟扫描代码库，识别技术债"""
+    # 这里实际应接入 SonarQube 或静态分析工具
+    print(f"--- [系统] 正在扫描文件: {file_path} ---")
+    return "发现代码异味：函数过长，缺乏类型注解，循环复杂度高。"
+
+def run_unit_tests(code_snippet: str) -> str:
+    """模拟运行单元测试"""
+    print(f"--- [系统] 正在运行测试用例... ---")
+    # 这里实际应接入 PyTest 或 CI/CD 脚本
+    if "def calculate" in code_snippet:
+        return "测试通过：覆盖率 90%，无回归错误。"
+    else:
+        return "测试失败：逻辑覆盖不全。"
+
+def apply_code_changes(file_path: str, new_code: str) -> str:
+    """模拟提交代码变更 (PR)"""
+    print(f"--- [系统] 正在提交变更到 {file_path} ... ---")
+    return f"成功创建 Pull Request: {file_path} 已更新。"
+
+# 2. 初始化大模型
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+# 3. 定义工具列表
+tools = [
+    Tool(
+        name="CodeScanner",
+        func=scan_code_repository,
+        description="用于扫描指定路径下的代码质量问题和技术债。"
+    ),
+    Tool(
+        name="TestRunner",
+        func=run_unit_tests,
+        description="用于验证重构后的代码是否通过测试。"
+    ),
+    Tool(
+        name="CodeCommitter",
+        func=apply_code_changes,
+        description="用于提交最终的重构代码。"
+    )
+]
+
+# 4. 构建核心逻辑流 (Prompt Engineering)
+# 这里体现了“长链推理”：先分析 -> 再重构 -> 后验证
+system_prompt = """
+你是一个高级自动化代码重构专家 Agent。你的目标是根据最新的架构规范优化遗留代码。
+请遵循以下工作流：
+1. 使用 CodeScanner 分析用户提供的文件路径，找出具体的技术债。
+2. 根据分析结果，生成优化后的代码（注意：保持原有业务逻辑不变）。
+3. 使用 TestRunner 验证你的代码。
+4. 如果测试失败，请根据错误信息修复代码并重新测试（自我修正循环）。
+5. 只有测试通过后，才调用 CodeCommitter 提交代码。
+
+请一步步思考，并解释你的每一步操作。
+"""
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", system_prompt),
+    ("placeholder", "{chat_history}"),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}"),
+])
+
+# 5. 构建 Agent 执行器
+agent = create_tool_calling_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+
+# 6. 模拟运行 (这也是你在表单中可以描述的“落地场景”)
+if __name__ == "__main__":
+    print("### 启动自动化重构 Agent ###")
+    # 假设我们要重构一个名为 payment_service.py 的文件
+    response = agent_executor.invoke({
+        "input": "请对 legacy_modules/payment_service.py 进行重构，要求符合 PEP8 规范并提高可读性。"
+    })
+    print("### 任务完成 ###")
